@@ -61,7 +61,9 @@ export const bills = pgTable("bills", {
   name: text("name").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   dueDay: integer("due_day").notNull(),
+  mustHaveByDay: integer("must_have_by_day"),
   isAutoPay: boolean("is_auto_pay").notNull().default(false),
+  autoFundFromPaycheck: boolean("auto_fund_from_paycheck").notNull().default(true),
   envelopeId: integer("envelope_id"),
   isPaid: boolean("is_paid").notNull().default(false),
   paidDate: timestamp("paid_date"),
@@ -90,6 +92,24 @@ export const incomes = pgTable("incomes", {
   isTaxed: boolean("is_taxed").notNull().default(false),
   taxPercentage: decimal("tax_percentage", { precision: 5, scale: 2 }),
   lastReceivedDate: timestamp("last_received_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const paySchedules = pgTable("pay_schedules", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  frequency: text("frequency").notNull(),
+  nextPayday: timestamp("next_payday").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const userSettings = pgTable("user_settings", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().unique(),
+  debtAttackMode: text("debt_attack_mode").notNull().default("avalanche"),
+  safeToSpendWarning: boolean("safe_to_spend_warning").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -128,6 +148,16 @@ export const insertIncomeSchema = createInsertSchema(incomes).omit({
   createdAt: true,
 });
 
+export const insertPayScheduleSchema = createInsertSchema(paySchedules).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type Envelope = typeof envelopes.$inferSelect;
 export type InsertEnvelope = z.infer<typeof insertEnvelopeSchema>;
 export type VirtualAccount = typeof virtualAccounts.$inferSelect;
@@ -142,3 +172,7 @@ export type EmployeePayment = typeof employeePayments.$inferSelect;
 export type InsertEmployeePayment = z.infer<typeof insertEmployeePaymentSchema>;
 export type Income = typeof incomes.$inferSelect;
 export type InsertIncome = z.infer<typeof insertIncomeSchema>;
+export type PaySchedule = typeof paySchedules.$inferSelect;
+export type InsertPaySchedule = z.infer<typeof insertPayScheduleSchema>;
+export type UserSettings = typeof userSettings.$inferSelect;
+export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;

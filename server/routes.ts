@@ -6,7 +6,9 @@ import {
   insertEnvelopeSchema, 
   insertDebtSchema, 
   insertTransactionSchema, 
-  insertBillSchema 
+  insertBillSchema,
+  insertPayScheduleSchema,
+  insertUserSettingsSchema
 } from "@shared/schema";
 import OpenAI from "openai";
 import { fromError } from "zod-validation-error";
@@ -259,6 +261,144 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting bill:", error);
       res.status(500).json({ error: "Failed to delete bill" });
+    }
+  });
+
+  app.get("/api/pay-schedules", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const schedules = await storage.getPaySchedulesByUser(userId);
+      res.json(schedules);
+    } catch (error) {
+      console.error("Error fetching pay schedules:", error);
+      res.status(500).json({ error: "Failed to fetch pay schedules" });
+    }
+  });
+
+  app.post("/api/pay-schedules", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const validation = insertPayScheduleSchema.safeParse({ ...req.body, userId });
+      if (!validation.success) {
+        return res.status(400).json({ error: fromError(validation.error).toString() });
+      }
+      const schedule = await storage.createPaySchedule(validation.data);
+      res.status(201).json(schedule);
+    } catch (error) {
+      console.error("Error creating pay schedule:", error);
+      res.status(500).json({ error: "Failed to create pay schedule" });
+    }
+  });
+
+  app.patch("/api/pay-schedules/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const schedule = await storage.updatePaySchedule(id, req.body);
+      if (!schedule) {
+        return res.status(404).json({ error: "Pay schedule not found" });
+      }
+      res.json(schedule);
+    } catch (error) {
+      console.error("Error updating pay schedule:", error);
+      res.status(500).json({ error: "Failed to update pay schedule" });
+    }
+  });
+
+  app.delete("/api/pay-schedules/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deletePaySchedule(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting pay schedule:", error);
+      res.status(500).json({ error: "Failed to delete pay schedule" });
+    }
+  });
+
+  app.get("/api/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      let settings = await storage.getUserSettings(userId);
+      if (!settings) {
+        settings = await storage.upsertUserSettings({ userId, debtAttackMode: "avalanche", safeToSpendWarning: true });
+      }
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  app.patch("/api/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const settings = await storage.upsertUserSettings({ ...req.body, userId });
+      res.json(settings);
+    } catch (error) {
+      console.error("Error updating settings:", error);
+      res.status(500).json({ error: "Failed to update settings" });
+    }
+  });
+
+  app.post("/api/safe-to-spend-check", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { amount, description } = req.body;
+      
+      const [accounts, envelopes, debts, bills, settings] = await Promise.all([
+        storage.getAccountsByUser(userId),
+        storage.getEnvelopesByUser(userId),
+        storage.getDebtsByUser(userId),
+        storage.getBillsByUser(userId),
+        storage.getUserSettings(userId),
+      ]);
+
+      const spendingAccount = accounts.find(a => a.type === "spending");
+      const spendingBalance = parseFloat(spendingAccount?.balance || "0");
+      
+      const strictEnvelopes = envelopes.filter(e => e.isStrict);
+      const strictTotal = strictEnvelopes.reduce((sum, e) => sum + parseFloat(e.budgetAmount), 0);
+      
+      const unpaidBills = bills.filter(b => !b.isPaid);
+      const unpaidBillsTotal = unpaidBills.reduce((sum, b) => sum + parseFloat(b.amount), 0);
+      
+      const debtPayments = debts.reduce((sum, d) => sum + parseFloat(d.minimumPayment), 0);
+      
+      const purchaseAmount = parseFloat(amount);
+      const newBalance = spendingBalance - purchaseAmount;
+      
+      const warnings: string[] = [];
+      let canBuy = true;
+      
+      if (purchaseAmount > spendingBalance) {
+        canBuy = false;
+        warnings.push(`This purchase ($${purchaseAmount.toFixed(2)}) exceeds your Spending Account balance ($${spendingBalance.toFixed(2)})`);
+      }
+      
+      if (newBalance < 0 && settings?.safeToSpendWarning) {
+        canBuy = false;
+        warnings.push("This would put your spending account in the negative");
+      }
+      
+      const safeToSpend = spendingBalance;
+      const recommendation = canBuy 
+        ? `You can afford this purchase. You'll have $${newBalance.toFixed(2)} remaining.`
+        : `Not recommended. ${warnings.join(". ")}`;
+      
+      res.json({
+        canBuy,
+        safeToSpend,
+        purchaseAmount,
+        remainingAfter: newBalance,
+        warnings,
+        recommendation,
+        strictObligations: strictTotal,
+        upcomingBills: unpaidBillsTotal,
+        debtPayments,
+      });
+    } catch (error) {
+      console.error("Error checking safe to spend:", error);
+      res.status(500).json({ error: "Failed to check safe to spend" });
     }
   });
 

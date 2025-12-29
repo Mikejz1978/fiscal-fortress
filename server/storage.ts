@@ -1,12 +1,15 @@
 import { 
   envelopes, virtualAccounts, debts, transactions, bills, employeePayments, incomes,
+  paySchedules, userSettings,
   type Envelope, type InsertEnvelope,
   type VirtualAccount, type InsertVirtualAccount,
   type Debt, type InsertDebt,
   type Transaction, type InsertTransaction,
   type Bill, type InsertBill,
   type EmployeePayment, type InsertEmployeePayment,
-  type Income, type InsertIncome
+  type Income, type InsertIncome,
+  type PaySchedule, type InsertPaySchedule,
+  type UserSettings, type InsertUserSettings
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -49,6 +52,14 @@ export interface IStorage {
   createIncome(income: InsertIncome): Promise<Income>;
   updateIncome(id: number, income: Partial<InsertIncome>): Promise<Income | undefined>;
   deleteIncome(id: number): Promise<void>;
+
+  getPaySchedulesByUser(userId: string): Promise<PaySchedule[]>;
+  createPaySchedule(schedule: InsertPaySchedule): Promise<PaySchedule>;
+  updatePaySchedule(id: number, schedule: Partial<InsertPaySchedule>): Promise<PaySchedule | undefined>;
+  deletePaySchedule(id: number): Promise<void>;
+
+  getUserSettings(userId: string): Promise<UserSettings | undefined>;
+  upsertUserSettings(settings: InsertUserSettings): Promise<UserSettings>;
 
   seedUserData(userId: string): Promise<void>;
 }
@@ -198,6 +209,39 @@ export class DatabaseStorage implements IStorage {
 
   async deleteIncome(id: number): Promise<void> {
     await db.delete(incomes).where(eq(incomes.id, id));
+  }
+
+  async getPaySchedulesByUser(userId: string): Promise<PaySchedule[]> {
+    return db.select().from(paySchedules).where(eq(paySchedules.userId, userId));
+  }
+
+  async createPaySchedule(schedule: InsertPaySchedule): Promise<PaySchedule> {
+    const [created] = await db.insert(paySchedules).values(schedule).returning();
+    return created;
+  }
+
+  async updatePaySchedule(id: number, schedule: Partial<InsertPaySchedule>): Promise<PaySchedule | undefined> {
+    const [updated] = await db.update(paySchedules).set(schedule).where(eq(paySchedules.id, id)).returning();
+    return updated;
+  }
+
+  async deletePaySchedule(id: number): Promise<void> {
+    await db.delete(paySchedules).where(eq(paySchedules.id, id));
+  }
+
+  async getUserSettings(userId: string): Promise<UserSettings | undefined> {
+    const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+    return settings;
+  }
+
+  async upsertUserSettings(settings: InsertUserSettings): Promise<UserSettings> {
+    const existing = await this.getUserSettings(settings.userId);
+    if (existing) {
+      const [updated] = await db.update(userSettings).set(settings).where(eq(userSettings.userId, settings.userId)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(userSettings).values(settings).returning();
+    return created;
   }
 
   async seedUserData(userId: string): Promise<void> {

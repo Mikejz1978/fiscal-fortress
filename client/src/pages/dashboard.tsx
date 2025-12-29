@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { 
   Wallet, 
   TrendingDown, 
@@ -7,14 +8,19 @@ import {
   CreditCard,
   PiggyBank,
   Lock,
-  ArrowRight
+  ArrowRight,
+  CheckCircle,
+  XCircle,
+  Loader2
 } from "lucide-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest } from "@/lib/queryClient";
 import type { Envelope, VirtualAccount, Debt, Bill } from "@shared/schema";
 
 function formatCurrency(amount: string | number): string {
@@ -25,36 +31,114 @@ function formatCurrency(amount: string | number): string {
   }).format(num);
 }
 
+interface SafeToSpendResult {
+  canBuy: boolean;
+  safeToSpend: number;
+  purchaseAmount: number;
+  remainingAfter: number;
+  warnings: string[];
+  recommendation: string;
+}
+
 function SafeToSpendCard({ accounts, envelopes }: { accounts: VirtualAccount[], envelopes: Envelope[] }) {
   const spendingAccount = accounts.find(a => a.type === "spending");
   const spendingBalance = spendingAccount ? parseFloat(spendingAccount.balance) : 0;
   
-  const strictEnvelopeTotal = envelopes
-    .filter(e => e.isStrict)
-    .reduce((sum, e) => sum + parseFloat(e.budgetAmount), 0);
-  
   const safeToSpend = Math.max(0, spendingBalance);
+  
+  const [checkAmount, setCheckAmount] = useState("");
+  const [checkResult, setCheckResult] = useState<SafeToSpendResult | null>(null);
+
+  const checkPurchase = useMutation({
+    mutationFn: async (amount: string) => {
+      const res = await apiRequest("POST", "/api/safe-to-spend-check", { amount });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setCheckResult(data);
+    },
+  });
+
+  const handleCheck = () => {
+    if (checkAmount && parseFloat(checkAmount) > 0) {
+      checkPurchase.mutate(checkAmount);
+    }
+  };
 
   return (
     <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
       <CardContent className="p-6 md:p-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Safe to Spend</p>
-            <p className="text-4xl font-bold tracking-tight md:text-5xl" data-testid="text-safe-to-spend">
-              {formatCurrency(safeToSpend)}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              After {envelopes.filter(e => e.isStrict).length} strict envelopes are funded
-            </p>
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Safe to Spend</p>
+              <p className="text-4xl font-bold tracking-tight md:text-5xl" data-testid="text-safe-to-spend">
+                {formatCurrency(safeToSpend)}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                After {envelopes.filter(e => e.isStrict).length} strict envelopes are funded
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button asChild data-testid="button-ask-advisor">
+                <Link href="/advisor">
+                  Ask Advisor About a Purchase
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <Button asChild data-testid="button-ask-advisor">
-              <Link href="/advisor">
-                Ask Advisor About a Purchase
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+          
+          <div className="border-t pt-4">
+            <p className="mb-3 text-sm font-medium">Quick Check: Can I buy this?</p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="number"
+                  placeholder="Enter amount..."
+                  value={checkAmount}
+                  onChange={(e) => {
+                    setCheckAmount(e.target.value);
+                    setCheckResult(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && handleCheck()}
+                  className="pl-9"
+                  data-testid="input-quick-check"
+                />
+              </div>
+              <Button 
+                onClick={handleCheck}
+                disabled={!checkAmount || checkPurchase.isPending}
+                data-testid="button-quick-check"
+              >
+                {checkPurchase.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Check"
+                )}
+              </Button>
+            </div>
+            
+            {checkResult && (
+              <div className={`mt-3 flex items-start gap-3 rounded-lg p-3 ${
+                checkResult.canBuy ? "bg-green-500/10" : "bg-destructive/10"
+              }`} data-testid="text-check-result">
+                {checkResult.canBuy ? (
+                  <CheckCircle className="h-5 w-5 shrink-0 text-green-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 shrink-0 text-destructive" />
+                )}
+                <div>
+                  <p className={`font-medium ${checkResult.canBuy ? "text-green-600" : "text-destructive"}`}>
+                    {checkResult.canBuy ? "Yes, you can afford this!" : "Not recommended"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {checkResult.recommendation}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </CardContent>

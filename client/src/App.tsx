@@ -16,6 +16,7 @@ import Envelopes from "@/pages/envelopes";
 import Debts from "@/pages/debts";
 import Advisor from "@/pages/advisor";
 import Transactions from "@/pages/transactions";
+import Settings from "@/pages/settings";
 
 function AuthenticatedRouter() {
   return (
@@ -25,6 +26,7 @@ function AuthenticatedRouter() {
       <Route path="/debts" component={Debts} />
       <Route path="/advisor" component={Advisor} />
       <Route path="/transactions" component={Transactions} />
+      <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
   );

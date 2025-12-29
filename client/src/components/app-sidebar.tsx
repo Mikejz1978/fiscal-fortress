@@ -7,6 +7,7 @@ import {
   Receipt,
   LogOut,
   Shield,
+  Settings,
 } from "lucide-react";
 import {
   Sidebar,
@@ -49,6 +50,11 @@ const menuItems = [
     title: "Transactions",
     url: "/transactions",
     icon: Receipt,
+  },
+  {
+    title: "Settings",
+    url: "/settings",
+    icon: Settings,
   },
 ];
 
