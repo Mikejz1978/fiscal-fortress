@@ -1,0 +1,169 @@
+Phase 1 (free): “Autopilot Without Bank Access”
+
+This is the MVP that actually changes your life:
+
+Core system (what your app should enforce)
+
+Accounts (buckets)
+
+Bills Account
+
+Spending Account
+
+Savings Account
+
+Taxes Account (optional but smart for you)
+
+Debt Attack Account (optional)
+
+Paycheck engine
+
+You set payday schedule(s): weekly/biweekly/monthly
+
+Each payday triggers an automatic “funding plan”:
+
+Bills get funded first
+
+minimum debt payments get reserved
+
+savings/taxes get reserved
+
+only then: “Safe to Spend” is released
+
+Safe-to-Spend Lock
+
+App shows a single number: SAFE TO SPEND
+
+If you enter a purchase amount, it answers:
+
+✅ “Yes — still safe”
+
+⚠️ “Yes, but you’ll short X envelope”
+
+❌ “No — this breaks bills/debt funding”
+
+Bills engine
+Every bill needs:
+
+amount
+
+due date
+
+“must have by” date (your idea is GREAT)
+
+funding rule:
+
+fund fully on payday
+
+or split across paychecks between now and due date
+
+That’s enough to keep you on top of everything without you doing constant work.
+
+Phase 2 (still cheap): Transaction capture without Plaid
+
+You have options that cost $0–$5/mo:
+
+import bank CSV once a week
+
+forward emailed receipts to a special email (auto parse)
+
+“quick add transaction” in 3 taps
+
+connect only one source first (like one debit account) to reduce friction
+
+Phase 3 (paid): Bank integrations + true autopay assist
+
+When you’re ready, we add:
+
+Plaid for transaction feed (typically monthly costs once you scale)
+
+optional ACH / bill pay (more complicated + compliance-heavy)
+
+or the simpler “semi-autopay” approach:
+
+the app tells you exactly what to pay
+
+you click the biller’s autopay / scheduled payment you already have set up
+
+app confirms it’s funded and tracks it
+
+About “paying loans every two weeks”
+
+You’re right: paying biweekly can reduce interest if the lender applies it immediately.
+
+But here’s the catch:
+
+Many lenders will hold partial payments until they equal a full monthly payment.
+
+If they hold it, you don’t get the interest benefit you’re trying to get.
+
+The “break the system” method that actually works
+
+Instead of sending half-payments to the lender, do this:
+
+App schedules biweekly transfers into a “Loan Holding” bucket/account
+
+On the lender due date, you send one full payment
+
+If you want the true acceleration, you add an extra principal payment monthly (or each paycheck)
+
+This guarantees:
+
+you’re “paying biweekly” from your perspective (money is reserved)
+
+you never miss due dates
+
+you still accelerate payoff intentionally
+
+We can support both modes in the app:
+
+Biweekly reserve + monthly pay (safe, works everywhere)
+
+True biweekly direct-pay (only if that lender applies partials correctly)
+
+Hosting for basically nothing (so Replit can’t block you)
+
+Since you already pushed to GitHub, you can run this cheap:
+
+Cheapest reliable setup:
+
+Frontend + backend together on Render (free/low tier)
+
+DB on Render Postgres free tier or Neon free tier
+
+Cron jobs: Render cron / GitHub Actions / a tiny worker
+
+Email reminders: Resend free tier
+
+Push notifications later (mobile)
+
+If you want, we can deploy Fiscal Fortress the same way you did SillyDog so it’s fully yours and not dependent on Replit limits.
+
+What I want you to do next (no waiting, just steps)
+1) Clean the repo (remove that zip)
+
+Run the commands I gave above.
+
+2) Add a “Money Autopilot” configuration screen
+
+In the app, we’ll add:
+
+list of accounts (Bills/Spending/Savings/Taxes/Debt)
+
+payday schedules (you already started this)
+
+“funding rules” per bill
+
+debt strategy (snowball/avalanche — you already have this)
+
+3) Make the app “nag you” like a boss
+
+If you want it to stay on top of you, we add:
+
+red banner: “YOU MUST PAY THIS TODAY”
+
+daily checklist until cleared
+
+notifications (email first; SMS later if you want)
+
+If you tell me your payday frequency (weekly/biweekly and what day) and your top 6 bills/loans (name + monthly amount + due date), I’ll map the exact funding rules you should use so the app can “auto-run” your month with a single Safe-to-Spend number.

@@ -343,7 +343,7 @@ export async function registerRoutes(
   app.post("/api/safe-to-spend-check", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const { amount, description } = req.body;
+      const { amount } = req.body;
       
       const [accounts, envelopes, debts, bills, settings] = await Promise.all([
         storage.getAccountsByUser(userId),
@@ -354,7 +354,9 @@ export async function registerRoutes(
       ]);
 
       const spendingAccount = accounts.find(a => a.type === "spending");
+      const billsAccount = accounts.find(a => a.type === "bills");
       const spendingBalance = parseFloat(spendingAccount?.balance || "0");
+      const billsBalance = parseFloat(billsAccount?.balance || "0");
       
       const strictEnvelopes = envelopes.filter(e => e.isStrict);
       const strictTotal = strictEnvelopes.reduce((sum, e) => sum + parseFloat(e.budgetAmount), 0);
@@ -368,26 +370,46 @@ export async function registerRoutes(
       const newBalance = spendingBalance - purchaseAmount;
       
       const warnings: string[] = [];
-      let canBuy = true;
+      let status: "yes" | "warning" | "no" = "yes";
       
       if (purchaseAmount > spendingBalance) {
-        canBuy = false;
-        warnings.push(`This purchase ($${purchaseAmount.toFixed(2)}) exceeds your Spending Account balance ($${spendingBalance.toFixed(2)})`);
+        status = "no";
+        warnings.push(`This purchase exceeds your Spending Account ($${spendingBalance.toFixed(2)} available)`);
+      } else if (newBalance < 100 && settings?.safeToSpendWarning) {
+        status = "warning";
+        warnings.push(`You'll only have $${newBalance.toFixed(2)} left in Spending`);
       }
       
-      if (newBalance < 0 && settings?.safeToSpendWarning) {
-        canBuy = false;
-        warnings.push("This would put your spending account in the negative");
+      const nonStrictEnvelopes = envelopes.filter(e => !e.isStrict);
+      const affectedEnvelopes = nonStrictEnvelopes.filter(e => {
+        const balance = parseFloat(e.currentBalance);
+        return purchaseAmount > balance && balance > 0;
+      });
+      
+      if (affectedEnvelopes.length > 0 && status !== "no") {
+        status = "warning";
+        warnings.push(`This may short ${affectedEnvelopes.map(e => e.name).join(", ")} envelope(s)`);
       }
       
-      const safeToSpend = spendingBalance;
-      const recommendation = canBuy 
-        ? `You can afford this purchase. You'll have $${newBalance.toFixed(2)} remaining.`
-        : `Not recommended. ${warnings.join(". ")}`;
+      const billsAccountWouldBeShort = billsBalance < unpaidBillsTotal && purchaseAmount > newBalance;
+      if (billsAccountWouldBeShort && purchaseAmount > spendingBalance * 0.5) {
+        if (status === "yes") status = "warning";
+        warnings.push("Bills account may need this money");
+      }
+      
+      let recommendation: string;
+      if (status === "yes") {
+        recommendation = `Yes, you can afford this. You'll have $${newBalance.toFixed(2)} remaining.`;
+      } else if (status === "warning") {
+        recommendation = `Proceed with caution. ${warnings.length > 0 ? warnings[0] : "Consider your budget carefully."}`;
+      } else {
+        recommendation = `Not recommended. ${warnings.length > 0 ? warnings[0] : "Insufficient funds."}`;
+      }
       
       res.json({
-        canBuy,
-        safeToSpend,
+        canBuy: status !== "no",
+        status,
+        safeToSpend: spendingBalance,
         purchaseAmount,
         remainingAfter: newBalance,
         warnings,
@@ -399,6 +421,181 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error checking safe to spend:", error);
       res.status(500).json({ error: "Failed to check safe to spend" });
+    }
+  });
+
+  app.get("/api/payday-funding-plan", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const [accounts, bills, debts, paySchedules, settings] = await Promise.all([
+        storage.getAccountsByUser(userId),
+        storage.getBillsByUser(userId),
+        storage.getDebtsByUser(userId),
+        storage.getPaySchedulesByUser(userId),
+        storage.getUserSettings(userId),
+      ]);
+
+      const today = new Date();
+      const currentDay = today.getDate();
+
+      const unpaidBills = bills.filter(b => !b.isPaid);
+      const billsTotal = unpaidBills.reduce((sum, b) => sum + parseFloat(b.amount), 0);
+
+      const debtPaymentsTotal = debts.reduce((sum, d) => sum + parseFloat(d.minimumPayment), 0);
+
+      const savingsTarget = 200;
+      const taxReserve = 0;
+
+      const totalObligations = billsTotal + debtPaymentsTotal + savingsTarget + taxReserve;
+
+      const nextPayday = paySchedules.length > 0 
+        ? new Date(paySchedules[0].nextPayday)
+        : null;
+      
+      const expectedIncome = paySchedules.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+      
+      const safeToSpend = Math.max(0, expectedIncome - totalObligations);
+
+      const fundingPlan = {
+        billsFunding: billsTotal,
+        debtFunding: debtPaymentsTotal,
+        savingsFunding: savingsTarget,
+        taxesFunding: taxReserve,
+        safeToSpend,
+        totalObligations,
+        expectedIncome,
+        nextPayday,
+        bills: unpaidBills.map(b => ({
+          id: b.id,
+          name: b.name,
+          amount: parseFloat(b.amount),
+          dueDay: b.dueDay,
+          mustHaveByDay: b.mustHaveByDay,
+          fundingRule: b.fundingRule || "full_on_payday",
+          isUrgent: b.dueDay <= currentDay + 3 || (b.mustHaveByDay && b.mustHaveByDay <= currentDay),
+        })),
+        debts: debts.map(d => ({
+          id: d.id,
+          name: d.name,
+          minimumPayment: parseFloat(d.minimumPayment),
+          dueDay: d.dueDay,
+          isUrgent: d.dueDay <= currentDay + 3,
+        })),
+      };
+
+      res.json(fundingPlan);
+    } catch (error) {
+      console.error("Error getting payday funding plan:", error);
+      res.status(500).json({ error: "Failed to get funding plan" });
+    }
+  });
+
+  app.get("/api/urgent-actions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const [bills, debts] = await Promise.all([
+        storage.getBillsByUser(userId),
+        storage.getDebtsByUser(userId),
+      ]);
+
+      const today = new Date();
+      const currentDay = today.getDate();
+      const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      
+      const urgentActions: Array<{
+        type: "bill" | "debt";
+        urgency: "today" | "urgent" | "warning";
+        title: string;
+        description: string;
+        amount: number;
+        daysUntil: number;
+        id: number;
+      }> = [];
+
+      const calcDaysUntil = (dueDay: number) => {
+        if (dueDay >= currentDay) {
+          return dueDay - currentDay;
+        }
+        return daysInCurrentMonth - currentDay + dueDay;
+      };
+
+      bills.filter(b => !b.isPaid).forEach(bill => {
+        const dueDay = bill.dueDay;
+        const mustHaveByDay = bill.mustHaveByDay || dueDay;
+        let daysUntil = calcDaysUntil(dueDay);
+        let mustHaveDaysUntil = calcDaysUntil(mustHaveByDay);
+
+        if (daysUntil === 0 || mustHaveDaysUntil === 0) {
+          urgentActions.push({
+            type: "bill",
+            urgency: "today",
+            title: `PAY ${bill.name.toUpperCase()} TODAY`,
+            description: `Due today - must be paid immediately`,
+            amount: parseFloat(bill.amount),
+            daysUntil: 0,
+            id: bill.id,
+          });
+        } else if (daysUntil <= 3 || mustHaveDaysUntil <= 2) {
+          urgentActions.push({
+            type: "bill",
+            urgency: "urgent",
+            title: `${bill.name} due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`,
+            description: mustHaveDaysUntil < daysUntil 
+              ? `Must have funds by day ${mustHaveByDay}` 
+              : `Due on the ${dueDay}${dueDay === 1 ? 'st' : dueDay === 2 ? 'nd' : dueDay === 3 ? 'rd' : 'th'}`,
+            amount: parseFloat(bill.amount),
+            daysUntil,
+            id: bill.id,
+          });
+        } else if (daysUntil <= 7) {
+          urgentActions.push({
+            type: "bill",
+            urgency: "warning",
+            title: `${bill.name} coming up`,
+            description: `Due in ${daysUntil} days`,
+            amount: parseFloat(bill.amount),
+            daysUntil,
+            id: bill.id,
+          });
+        }
+      });
+
+      debts.forEach(debt => {
+        const dueDay = debt.dueDay;
+        let daysUntil = calcDaysUntil(dueDay);
+
+        if (daysUntil === 0) {
+          urgentActions.push({
+            type: "debt",
+            urgency: "today",
+            title: `PAY ${debt.name.toUpperCase()} TODAY`,
+            description: `Minimum payment due today`,
+            amount: parseFloat(debt.minimumPayment),
+            daysUntil: 0,
+            id: debt.id,
+          });
+        } else if (daysUntil <= 3) {
+          urgentActions.push({
+            type: "debt",
+            urgency: "urgent",
+            title: `${debt.name} payment due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`,
+            description: `Minimum payment: $${parseFloat(debt.minimumPayment).toFixed(2)}`,
+            amount: parseFloat(debt.minimumPayment),
+            daysUntil,
+            id: debt.id,
+          });
+        }
+      });
+
+      urgentActions.sort((a, b) => {
+        const urgencyOrder = { today: 0, urgent: 1, warning: 2 };
+        return urgencyOrder[a.urgency] - urgencyOrder[b.urgency] || a.daysUntil - b.daysUntil;
+      });
+
+      res.json(urgentActions);
+    } catch (error) {
+      console.error("Error getting urgent actions:", error);
+      res.status(500).json({ error: "Failed to get urgent actions" });
     }
   });
 

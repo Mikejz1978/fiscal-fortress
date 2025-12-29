@@ -53,6 +53,13 @@ shared/
 
 ## Key Features
 
+### Money Autopilot (NEW)
+- **Urgent Action Alerts**: Red banner for payments due TODAY, orange for due in 1-3 days
+- **Quick Check**: "Can I buy this?" widget with 3-state response (Yes/Warning/No)
+- **Pay Schedule Tracking**: Set up weekly/biweekly/semimonthly/monthly pay schedules
+- **Debt Attack Strategy**: Snowball (smallest first) or Avalanche (highest interest first)
+- **Payday Funding Plan**: Auto-calculate how much goes to each bucket
+
 ### Dashboard
 - **Safe to Spend**: Shows available money after strict envelopes are funded
 - **Virtual Accounts Overview**: Bills, Spending, and Savings balances
@@ -84,6 +91,11 @@ shared/
 - Filter by type or write-off status
 - Assign to envelopes and accounts
 
+### Settings
+- **Pay Schedule Management**: Add/edit pay schedules with frequency and amounts
+- **Debt Attack Mode**: Choose snowball or avalanche debt payoff strategy
+- **Safe-to-Spend Warning**: Toggle proactive spending warnings
+
 ## Database Schema
 - `users` - User accounts (Replit Auth)
 - `sessions` - Session storage
@@ -91,9 +103,11 @@ shared/
 - `virtual_accounts` - Bills/Spending/Savings accounts
 - `debts` - Debt tracking
 - `transactions` - Transaction history
-- `bills` - Recurring bills
+- `bills` - Recurring bills with fundingRule (full_on_payday/split_across_paychecks)
 - `employee_payments` - Employee payment tracking
 - `incomes` - Income sources
+- `pay_schedules` - Payday schedules (frequency, next payday, amount)
+- `user_settings` - User preferences (debt attack mode, warnings)
 
 ## Development
 - Run `npm run dev` to start the development server

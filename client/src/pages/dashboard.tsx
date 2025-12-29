@@ -11,7 +11,10 @@ import {
   ArrowRight,
   CheckCircle,
   XCircle,
-  Loader2
+  Loader2,
+  AlertOctagon,
+  Bell,
+  Clock
 } from "lucide-react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +26,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 import type { Envelope, VirtualAccount, Debt, Bill } from "@shared/schema";
 
+interface UrgentAction {
+  type: "bill" | "debt";
+  urgency: "today" | "urgent" | "warning";
+  title: string;
+  description: string;
+  amount: number;
+  daysUntil: number;
+  id: number;
+}
+
 function formatCurrency(amount: string | number): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
   return new Intl.NumberFormat("en-US", {
@@ -33,6 +46,7 @@ function formatCurrency(amount: string | number): string {
 
 interface SafeToSpendResult {
   canBuy: boolean;
+  status: "yes" | "warning" | "no";
   safeToSpend: number;
   purchaseAmount: number;
   remainingAfter: number;
@@ -122,16 +136,24 @@ function SafeToSpendCard({ accounts, envelopes }: { accounts: VirtualAccount[], 
             
             {checkResult && (
               <div className={`mt-3 flex items-start gap-3 rounded-lg p-3 ${
-                checkResult.canBuy ? "bg-green-500/10" : "bg-destructive/10"
+                checkResult.status === "yes" ? "bg-green-500/10" : 
+                checkResult.status === "warning" ? "bg-orange-500/10" : "bg-destructive/10"
               }`} data-testid="text-check-result">
-                {checkResult.canBuy ? (
+                {checkResult.status === "yes" ? (
                   <CheckCircle className="h-5 w-5 shrink-0 text-green-600" />
+                ) : checkResult.status === "warning" ? (
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-orange-500" />
                 ) : (
                   <XCircle className="h-5 w-5 shrink-0 text-destructive" />
                 )}
                 <div>
-                  <p className={`font-medium ${checkResult.canBuy ? "text-green-600" : "text-destructive"}`}>
-                    {checkResult.canBuy ? "Yes, you can afford this!" : "Not recommended"}
+                  <p className={`font-medium ${
+                    checkResult.status === "yes" ? "text-green-600" : 
+                    checkResult.status === "warning" ? "text-orange-500" : "text-destructive"
+                  }`}>
+                    {checkResult.status === "yes" ? "Yes - still safe" : 
+                     checkResult.status === "warning" ? "Yes, but proceed with caution" : 
+                     "No - this breaks bills/debt funding"}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {checkResult.recommendation}
@@ -143,6 +165,82 @@ function SafeToSpendCard({ accounts, envelopes }: { accounts: VirtualAccount[], 
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function UrgentActionsAlert({ actions }: { actions: UrgentAction[] }) {
+  if (actions.length === 0) return null;
+
+  const todayActions = actions.filter(a => a.urgency === "today");
+  const urgentActions = actions.filter(a => a.urgency === "urgent");
+  const warningActions = actions.filter(a => a.urgency === "warning");
+
+  if (todayActions.length === 0 && urgentActions.length === 0 && warningActions.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      {todayActions.map((action) => (
+        <div
+          key={`${action.type}-${action.id}`}
+          className="flex items-center gap-3 rounded-lg bg-destructive p-4 text-destructive-foreground"
+          data-testid={`alert-today-${action.type}-${action.id}`}
+        >
+          <AlertOctagon className="h-6 w-6 shrink-0" />
+          <div className="flex-1">
+            <p className="font-bold uppercase">{action.title}</p>
+            <p className="text-sm opacity-90">{action.description}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xl font-bold">{formatCurrency(action.amount)}</p>
+          </div>
+        </div>
+      ))}
+
+      {urgentActions.length > 0 && (
+        <div className="rounded-lg border-2 border-orange-500/50 bg-orange-500/10 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Bell className="h-5 w-5 text-orange-500" />
+            <p className="font-semibold text-orange-600 dark:text-orange-400">Coming Up Soon</p>
+          </div>
+          <div className="space-y-2">
+            {urgentActions.slice(0, 3).map((action) => (
+              <div
+                key={`${action.type}-${action.id}`}
+                className="flex items-center justify-between"
+                data-testid={`alert-urgent-${action.type}-${action.id}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-orange-500" />
+                  <span className="font-medium">{action.title}</span>
+                </div>
+                <span className="font-semibold">{formatCurrency(action.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {warningActions.length > 0 && (
+        <div className="rounded-lg border border-muted bg-muted/30 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <p className="text-sm font-medium text-muted-foreground">This Week</p>
+          </div>
+          <div className="space-y-1">
+            {warningActions.slice(0, 3).map((action) => (
+              <div
+                key={`${action.type}-${action.id}`}
+                className="flex items-center justify-between text-sm"
+                data-testid={`alert-warning-${action.type}-${action.id}`}
+              >
+                <span className="text-muted-foreground">{action.title}</span>
+                <span className="font-medium">{formatCurrency(action.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -328,6 +426,10 @@ export default function Dashboard() {
     queryKey: ["/api/bills"],
   });
 
+  const { data: urgentActions = [] } = useQuery<UrgentAction[]>({
+    queryKey: ["/api/urgent-actions"],
+  });
+
   const isLoading = accountsLoading || envelopesLoading || debtsLoading || billsLoading;
 
   if (isLoading) {
@@ -353,6 +455,8 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
         <p className="text-muted-foreground">Your financial command center</p>
       </div>
+
+      <UrgentActionsAlert actions={urgentActions} />
 
       <SafeToSpendCard accounts={accounts} envelopes={envelopes} />
       
