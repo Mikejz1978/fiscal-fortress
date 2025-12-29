@@ -63,6 +63,37 @@ async function upsertUser(claims: any) {
 export async function setupAuth(app: Express) {
   if (!process.env.REPL_ID) {
     console.warn("REPL_ID not set — skipping Replit Auth setup (external deploy mode).");
+    
+    // Add fallback routes for external deployment
+    app.get("/api/login", (_req, res) => {
+      res.redirect("/");
+    });
+    
+    app.get("/api/callback", (_req, res) => {
+      res.redirect("/");
+    });
+    
+    app.get("/api/logout", (_req, res) => {
+      res.redirect("/");
+    });
+    
+    // Mock user endpoint when auth is disabled
+    app.get("/api/auth/user", (_req, res) => {
+      if (process.env.AUTH_DISABLED === "true") {
+        res.json({
+          id: "demo-user",
+          email: "demo@fiscalfortress.app",
+          firstName: "Demo",
+          lastName: "User",
+          profileImageUrl: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        res.status(401).json({ message: "Not authenticated" });
+      }
+    });
+    
     return;
   }
   
