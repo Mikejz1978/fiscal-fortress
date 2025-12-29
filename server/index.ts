@@ -59,7 +59,7 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
+async function main() {
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -95,4 +95,9 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
-})();
+}
+
+main().catch((err) => {
+  console.error("Fatal startup error:", err);
+  process.exit(1);
+});
