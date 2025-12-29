@@ -64,6 +64,7 @@ export const bills = pgTable("bills", {
   mustHaveByDay: integer("must_have_by_day"),
   isAutoPay: boolean("is_auto_pay").notNull().default(false),
   autoFundFromPaycheck: boolean("auto_fund_from_paycheck").notNull().default(true),
+  fundingRule: text("funding_rule").notNull().default("full_on_payday"),
   envelopeId: integer("envelope_id"),
   isPaid: boolean("is_paid").notNull().default(false),
   paidDate: timestamp("paid_date"),
